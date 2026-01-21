@@ -71,6 +71,21 @@ np.savetxt('../../data/asfr_final_test.txt', asfr_final_test)
 print("ASFR final test data shape:", asfr_final_test.shape)
 
 
+training_index = np.logical_and(asfr_period_data[:, 1] >= 1950, asfr_period_data[:, 1] <= 2021)
+asfr_training = asfr_period_data[training_index, :]
+np.savetxt('../../data/asfr_training_llm.txt', asfr_training)
+print("ASFR training data shape:", asfr_training.shape)
+
+test_index = asfr_period_data[:, 1] == 2022
+asfr_test = asfr_period_data[test_index, :]
+np.savetxt('../../data/asfr_test_llm.txt', asfr_test)
+print("ASFR test data shape:", asfr_test.shape)
+
+final_test_index = np.logical_and(asfr_period_data[:, 1] > 2022, asfr_period_data[:, 1] <= 2025)
+asfr_final_test = asfr_period_data[final_test_index, :]
+np.savetxt('../../data/asfr_final_test_llm.txt', asfr_final_test)
+print("ASFR final test data shape:", asfr_final_test.shape)
+
 
 
 

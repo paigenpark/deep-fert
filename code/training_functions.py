@@ -19,20 +19,19 @@ def get_data(index, data, max_val, mode, changeratetolog=False):
         rand_index = tf.random.uniform([], minval=0, maxval=max_val, dtype=tf.int32)
         entry = data[rand_index, :]
 
-    geography, gender, year, age, rate = entry[0], entry[1], entry[2], entry[3], entry[4]
+    geography, year, age, rate = entry[0], entry[1], entry[2], entry[3]
 
     # Normalization or preparation
-    year = (year - 1959) / 60
+    year = (year - 1950) / (2015-1950)
     age = tf.cast(age, tf.int32)
     geography = tf.cast(geography, tf.int32)
-    gender = tf.cast(gender, tf.int32)
     if changeratetolog:
         epsilon = 9e-06 # min rate in training data
         rate = tf.math.log(tf.maximum(rate, epsilon))
 
     # Reshape each element to scalar
     features = (tf.reshape(year, [1]), tf.reshape(age, [1]), 
-                tf.reshape(geography, [1]), tf.reshape(gender, [1]))
+                tf.reshape(geography, [1]))
     rate = tf.reshape(rate, [1])
     return features, rate
 
@@ -43,7 +42,7 @@ def prep_data(data, mode, changeratetolog=False):
     data = tf.cast(data, tf.float32)
     max_val = data.shape[0]
 
-    dataset = tf.data.Dataset.from_tensor_slices(np.arange(10000))
+    dataset = tf.data.Dataset.from_tensor_slices(np.arange(3000))
 
     if mode == "train":
         dataset = dataset.repeat()
@@ -70,49 +69,45 @@ def create_model(geo_dim):
     year = tfkl.Input(shape=(1,), dtype='float32', name='Year')
     age =  tfkl.Input(shape=(1,), dtype='int32', name='Age')
     geography = tfkl.Input(shape=(1,), dtype='int32', name='Geography')
-    gender = tfkl.Input(shape=(1,), dtype='int32', name='Gender')
 
     # defining embedding layers 
-    age_embed = tfkl.Embedding(input_dim=100, output_dim=5, name='Age_embed')(age)
+    age_embed = tfkl.Embedding(input_dim=55, output_dim=5, name='Age_embed')(age)
     age_embed = tfkl.Flatten()(age_embed)
-
-    gender_embed = tfkl.Embedding(input_dim=2, output_dim=5, name='Gender_embed')(gender)
-    gender_embed = tfkl.Flatten()(gender_embed)
 
     geography_embed = tfkl.Embedding(input_dim=geo_dim, output_dim=5, name='Geography_embed')(geography)
     geography_embed = tfkl.Flatten()(geography_embed)
 
     # create feature vector that concatenates all inputs 
-    x = tfkl.Concatenate()([year, age_embed, gender_embed, geography_embed])
+    x = tfkl.Concatenate()([year, age_embed, geography_embed])
     x1 = x
 
     # setting up middle layers 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    # x = tfkl.Dense(128, activation='tanh')(x)
+    # x = tfkl.BatchNormalization()(x)
+    # x = tfkl.Dropout(0.1)(x)
 
     # setting up output layer 
     x = tfkl.Concatenate()([x1, x])
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.1)(x)
 
     x = tfkl.Dense(1, activation='sigmoid', name='final')(x)
 
     # creating the model 
-    model = tf.keras.Model(inputs=[year, age, geography, gender], outputs=[x])
+    model = tf.keras.Model(inputs=[year, age, geography], outputs=[x])
 
     # compiling the model
     model.compile(loss='mse', optimizer='adam')
@@ -124,49 +119,45 @@ def create_log_model(geo_dim):
     year = tfkl.Input(shape=(1,), dtype='float32', name='Year')
     age =  tfkl.Input(shape=(1,), dtype='int32', name='Age')
     geography = tfkl.Input(shape=(1,), dtype='int32', name='Geography')
-    gender = tfkl.Input(shape=(1,), dtype='int32', name='Gender')
 
     # defining embedding layers 
-    age_embed = tfkl.Embedding(input_dim=100, output_dim=5, name='Age_embed')(age)
+    age_embed = tfkl.Embedding(input_dim=55, output_dim=5, name='Age_embed')(age)
     age_embed = tfkl.Flatten()(age_embed)
-
-    gender_embed = tfkl.Embedding(input_dim=2, output_dim=5, name='Gender_embed')(gender)
-    gender_embed = tfkl.Flatten()(gender_embed)
 
     geography_embed = tfkl.Embedding(input_dim=geo_dim, output_dim=5, name='Geography_embed')(geography)
     geography_embed = tfkl.Flatten()(geography_embed)
 
     # create feature vector that concatenates all inputs 
-    x = tfkl.Concatenate()([year, age_embed, gender_embed, geography_embed])
+    x = tfkl.Concatenate()([year, age_embed, geography_embed])
     x1 = x
 
     # setting up middle layers 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.2)(x)
 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.2)(x)
 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.2)(x)
 
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    # x = tfkl.Dense(128, activation='tanh')(x)
+    # x = tfkl.LayerNormalization()(x)
+    # x = tfkl.Dropout(0.1)(x)
 
     # setting up output layer 
     x = tfkl.Concatenate()([x1, x])
-    x = tfkl.Dense(128, activation='tanh')(x)
-    x = tfkl.BatchNormalization()(x)
-    x = tfkl.Dropout(0.05)(x)
+    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.LayerNormalization()(x)
+    x = tfkl.Dropout(0.2)(x)
     
     x = tfkl.Dense(1, name='final')(x)
 
     # creating the model 
-    model = tf.keras.Model(inputs=[year, age, geography, gender], outputs=[x])
+    model = tf.keras.Model(inputs=[year, age, geography], outputs=[x])
 
     # compiling the model
     model.compile(loss='mse', optimizer='adam')
@@ -181,10 +172,24 @@ def run_deep_model(dataset_train, dataset_test, geo_dim, epochs, steps_per_epoch
     else:
         model = create_model(geo_dim)
 
-    callbacks = [tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.25, patience=3, verbose=0, mode="auto", 
-                                                    min_delta=1e-8, cooldown=0, min_lr=0.0)]
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss",
+        patience=10,            # Wait 10 epochs before giving up
+        verbose=1,
+        mode="auto",
+        restore_best_weights=True # Crucial: reverts model to its best state
+        )
+
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss", 
+        factor=0.25, 
+        patience=3, 
+        verbose=1, 
+        min_delta=1e-8
+        )
+    
     history = model.fit(dataset_train, validation_data=dataset_test, validation_steps=25, steps_per_epoch=steps_per_epoch, 
-                        epochs=epochs, verbose=2, callbacks=callbacks)
+                        epochs=epochs, verbose=2, callbacks=[early_stopping, reduce_lr])
 
     val_loss = min(history.history['val_loss'])
 
