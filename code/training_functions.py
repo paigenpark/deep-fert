@@ -1,8 +1,6 @@
 import tensorflow as tf
-import csv
 import numpy as np
 import os as os
-import matplotlib.pyplot as plt
 tfkl = tf.keras.layers
 
 # get and prepare data
@@ -26,7 +24,7 @@ def get_data(index, data, max_val, mode, changeratetolog=False):
     age = tf.cast(age, tf.int32)
     geography = tf.cast(geography, tf.int32)
     if changeratetolog:
-        epsilon = 9e-06 # min rate in training data
+        epsilon = 1e-05 # min rate in training data
         rate = tf.math.log(tf.maximum(rate, epsilon))
 
     # Reshape each element to scalar
@@ -82,15 +80,15 @@ def create_model(geo_dim):
     x1 = x
 
     # setting up middle layers 
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
     x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
     x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
     x = tfkl.Dropout(0.1)(x)
 
@@ -100,7 +98,7 @@ def create_model(geo_dim):
 
     # setting up output layer 
     x = tfkl.Concatenate()([x1, x])
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
     x = tfkl.Dropout(0.1)(x)
 
@@ -132,17 +130,17 @@ def create_log_model(geo_dim):
     x1 = x
 
     # setting up middle layers 
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.2)(x)
+    x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.2)(x)
+    x = tfkl.Dropout(0.1)(x)
 
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.2)(x)
+    x = tfkl.Dropout(0.1)(x)
 
     # x = tfkl.Dense(128, activation='tanh')(x)
     # x = tfkl.LayerNormalization()(x)
@@ -150,9 +148,9 @@ def create_log_model(geo_dim):
 
     # setting up output layer 
     x = tfkl.Concatenate()([x1, x])
-    x = tfkl.Dense(64, activation='tanh')(x)
+    x = tfkl.Dense(64, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.2)(x)
+    x = tfkl.Dropout(0.1)(x)
     
     x = tfkl.Dense(1, name='final')(x)
 

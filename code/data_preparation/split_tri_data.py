@@ -1,4 +1,3 @@
-import csv
 import numpy as np
 import os as os
 
@@ -30,7 +29,10 @@ with open("../../data/asfr/asfrTR.txt", "r") as file:
             if country not in countries:
                 countries.append(country)
             country = countries.index(country)
-            cohort = int(cohort)
+            try:
+                cohort = int(cohort)
+            except:
+                cohort = -1
             try:
                 rate = float(rate)
             except:
@@ -52,8 +54,6 @@ geos_index = np.arange(len(geos_list))
 geos_key = np.column_stack((np.array(geos_list), geos_index))
 np.save('../../data/geos_key.npy', geos_key)
 
-# create combined data
-#combined = np.vstack((state_data, country_data))
 
 ##### Country Splits #####
 training_index = np.logical_and(asfr_tri_data[:, 1] >= 1950, asfr_tri_data[:, 1] <= 2005)
