@@ -1,0 +1,193 @@
+---
+title: "Checking Results"
+format:
+  html:
+    code-fold: true
+engine: knitr
+---
+
+```{r}
+#| label: setup
+#| message: false
+
+library(tidyverse)
+```
+
+## Load Data
+
+```{r}
+#| label: load-data
+
+results <- readRDS(here::here("data", "lee_all_results.rds"))
+```
+
+## Explore Top-Level Structure
+
+```{r}
+#| label: top-level
+
+# How many list elements?
+length(results)
+
+# What are the top-level names?
+names(results)
+```
+
+## Explore a Single Element
+
+```{r}
+#| label: single-element-names
+
+# What sub-groups exist within one element?
+elem <- results[["34_2002"]]
+names(elem)
+```
+
+```{r}
+#| label: single-element-types
+
+# What type/class is each sub-group?
+sapply(elem, function(x) paste(class(x), collapse = ", "))
+```
+
+```{r}
+#| label: single-element-dims
+
+# Dimensions or length of each sub-group
+sapply(elem, function(x) {
+  if (!is.null(dim(x))) paste(dim(x), collapse = " x ") else length(x)
+})
+```
+
+## Examine Scalar/Metadata Fields
+
+```{r}
+#| label: metadata-fields
+
+elem$method
+elem$parameter
+elem$label
+elem$year
+elem$age
+elem$obs
+elem$len
+elem$cohort
+```
+
+## Examine Matrix/Data Sub-Groups
+
+```{r}
+#| label: matrix-subgroups
+
+# Show just the sub-groups that are matrices or data frames
+matrix_names <- names(elem)[sapply(elem, function(x) is.matrix(x) | is.data.frame(x))]
+matrix_names
+```
+
+```{r}
+#| label: peek-matrices
+
+# Preview first few rows/cols of each matrix sub-group
+for (nm in matrix_names) {
+  cat("\n===", nm, "===\n")
+  cat("Dimensions:", paste(dim(elem[[nm]]), collapse = " x "), "\n")
+  print(elem[[nm]][1:min(5, nrow(elem[[nm]])), 1:min(6, ncol(elem[[nm]]))])
+}
+```
+
+## Compare Across Elements
+
+```{r}
+#| label: compare-elements
+
+# Do all elements have the same sub-group names?
+all_names <- lapply(results, names)
+unique_structures <- unique(all_names)
+cat("Number of unique sub-group structures:", length(unique_structures), "\n")
+
+# If they differ, show which elements have which structure
+if (length(unique_structures) > 1) {
+  for (i in seq_along(unique_structures)) {
+    cat("\nStructure", i, ":", paste(unique_structures[[i]], collapse = ", "), "\n")
+    matching <- names(results)[sapply(all_names, identical, unique_structures[[i]])]
+    cat("Elements:", paste(head(matching, 5), collapse = ", "),
+        if (length(matching) > 5) paste("... and", length(matching) - 5, "more"), "\n")
+  }
+} else {
+  cat("All elements share the same sub-group names:", paste(unique_structures[[1]], collapse = ", "), "\n")
+}
+```
+
+```{r}
+extract_forecasts <- function(key, item, target_data = "predASFR") {
+
+  # Skip if the item is just an error message or empty
+  if (is.character(item) || is.null(item[[target_data]])) {
+    return(NULL)
+  }
+
+  # Parse country and jump-off year from key (e.g. "34_2002")
+  key_parts <- str_split_1(key, "_")
+
+  # 1. Get the Forecast Matrix
+  # (Rows are Ages, Columns are Years)
+  mat <- item[[target_data]]
+
+  # 2. Convert Matrix to Data Frame
+  df <- as.data.frame(mat) %>%
+    rownames_to_column(var = "Age") %>%
+    pivot_longer(
+      cols = -Age,
+      names_to = "Year",
+      values_to = "Rate"
+    ) %>%
+    mutate(
+      Country = key_parts[1],
+      JumpOffYear = key_parts[2],
+      Method = "Lee1993Log",
+      Key = key
+    )
+
+  return(df)
+}
+```
+```{r}
+# Apply the function to every item in your list and bind them into one big table
+# map2_dfr comes from the 'purrr' package (part of tidyverse)
+final_df_period <- map2_dfr(names(results), results, extract_forecasts, target_data = "predASFR")
+
+# Save to CSV
+write_csv(final_df_period, here("data", "lee_forecasts_all_period.csv"))
+
+message("Saved ", nrow(final_df_period), " rows to lee_forecasts_all_period.csv")
+```
+```{r}
+# Apply the function to every item in your list and bind them into one big table
+# map2_dfr comes from the 'purrr' package (part of tidyverse)
+final_df_cohort <- map2_dfr(names(results), results, extract_forecasts, target_data = "predCASFR")
+
+# Save to CSV
+write_csv(final_df_cohort, here("data", "lee_forecasts_all_cohort.csv"))
+
+message("Saved ", nrow(final_df_cohort), " rows to lee_forecasts_all_cohort.csv")
+```
+```{r}
+# Apply the function to every item in your list and bind them into one big table
+# map2_dfr comes from the 'purrr' package (part of tidyverse)
+final_df_obs_period <- map2_dfr(names(results), results, extract_forecasts, target_data = "obsASFR")
+
+# Save to CSV
+write_csv(final_df_obs_period, here("data", "lee_obs_period.csv"))
+
+message("Saved ", nrow(final_df_obs_period), " rows to lee_obs_period.csv")
+```
+```{r}
+# Apply the function to every item in your list and bind them into one big table
+# map2_dfr comes from the 'purrr' package (part of tidyverse)
+final_df_obs_cohort <- map2_dfr(names(results), results, extract_forecasts, target_data = "obsCASFR")
+
+# Save to CSV
+write_csv(final_df_obs_cohort, here("data", "lee_obs_cohort.csv"))
+
+message("Saved ", nrow(final_df_obs_cohort), " rows to lee_obs_cohort.csv")
+```
