@@ -51,9 +51,6 @@ geos_index = np.arange(len(geos_list))
 geos_key = np.column_stack((np.array(geos_list), geos_index))
 np.save('../../data/geos_key.npy', geos_key)
 
-# create combined data
-#combined = np.vstack((state_data, country_data))
-
 ##### Country Splits #####
 training_index = np.logical_and(asfr_period_data[:, 1] >= 1950, asfr_period_data[:, 1] <= 2005)
 asfr_training = asfr_period_data[training_index, :]
@@ -70,21 +67,7 @@ asfr_final_test = asfr_period_data[final_test_index, :]
 np.savetxt('../../data/asfr_final_test.txt', asfr_final_test)
 print("ASFR final test data shape:", asfr_final_test.shape)
 
-
-training_index = np.logical_and(asfr_period_data[:, 1] >= 1950, asfr_period_data[:, 1] <= 2021)
-asfr_training = asfr_period_data[training_index, :]
-np.savetxt('../../data/asfr_training_llm.txt', asfr_training)
-print("ASFR training data shape:", asfr_training.shape)
-
-test_index = asfr_period_data[:, 1] == 2022
-asfr_test = asfr_period_data[test_index, :]
-np.savetxt('../../data/asfr_test_llm.txt', asfr_test)
-print("ASFR test data shape:", asfr_test.shape)
-
-final_test_index = np.logical_and(asfr_period_data[:, 1] > 2022, asfr_period_data[:, 1] <= 2025)
-asfr_final_test = asfr_period_data[final_test_index, :]
-np.savetxt('../../data/asfr_final_test_llm.txt', asfr_final_test)
-print("ASFR final test data shape:", asfr_final_test.shape)
+np.savetxt('../../data/asfr_1950_to_2023.txt', asfr_period_data)
 
 
 

@@ -231,7 +231,7 @@ lapply(required_packages, library, character.only = TRUE)
 
 # load and prepare data
 path <- here("data")
-asfr_training <- read.table(paste(path, "asfr_1950_to_2015.txt", sep = "/"),
+asfr_training <- read.table(paste(path, "asfr_1950_to_2023.txt", sep = "/"),
                               header = FALSE)
 colnames(asfr_training) <- c('Country', 'Year', 'Age', 'Rate')
 

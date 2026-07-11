@@ -94,7 +94,7 @@ invisible(lapply(required_packages, install_if_missing))
 lapply(required_packages, library, character.only = TRUE)
 require(svd)
 
-source(here("code/benchmark_models/pnas_cohort/Method14_Lee1993Log/lca.log.r"))
+source(here("code/benchmark_models/pnas_cohort/Lee1993Log/lca.log.r"))
 
 ###########################################
 Method14_Lee1993Log.R <- function(ASFR,
@@ -183,7 +183,11 @@ Method14_Lee1993Log.R <- function(ASFR,
   ####
   ################ Output step
   predASFR <- data
-  predCASFR <- asfr_period_to_cohort(predASFR) 
+  # Cap forecast rates at 1.0: the log-bilinear model can extrapolate k(t)
+  # into exponential blow-up (rates >> 1, which are impossible for ASFR).
+  # This matches the rate cap applied in the DL/observed pipeline.
+  predASFR[predASFR > 1] <- 1
+  predCASFR <- asfr_period_to_cohort(predASFR)
   
   predASFRlowerPI80 <- datalower80 
   predASFRupperPI80 <- dataupper80
@@ -223,7 +227,7 @@ Method14_Lee1993Log.R <- function(ASFR,
 #### Prep ASFR data 
 # load and prepare data
 path <- here("data")
-asfr_training <- read.table(paste(path, "asfr_1950_to_2015.txt", sep = "/"), 
+asfr_training <- read.table(paste(path, "asfr_1950_to_2023.txt", sep = "/"), 
                               header = FALSE)
 countries <- unique(asfr_training[,1])
 ages <- unique(asfr_training[,3])

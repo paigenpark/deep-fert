@@ -186,7 +186,7 @@ def run_deep_model(dataset_train, dataset_test, geo_dim, epochs, steps_per_epoch
         min_delta=1e-8
         )
     
-    history = model.fit(dataset_train, validation_data=dataset_test, validation_steps=25, steps_per_epoch=steps_per_epoch, 
+    history = model.fit(dataset_train, validation_data=dataset_test, validation_steps=25, steps_per_epoch=steps_per_epoch,
                         epochs=epochs, verbose=2, callbacks=[early_stopping, reduce_lr])
 
     val_loss = min(history.history['val_loss'])
@@ -194,4 +194,63 @@ def run_deep_model(dataset_train, dataset_test, geo_dim, epochs, steps_per_epoch
     tf.keras.backend.clear_session()
 
     return model, val_loss
+
+
+# run DL model with leak-free two-phase "refit" schedule
+#
+# Phase 1: fit on a temporal-holdout subset (years <= JOY-GAP) and early-stop on
+#          a held-out validation set (years JOY-GAP+1..JOY) to pick the best epoch.
+# Phase 2: refit a fresh model on the FULL training set (all years <= JOY) for that
+#          many epochs, with NO validation peek. This keeps model selection honest
+#          (never touches post-JOY graded data) while recovering the recent years
+#          that a plain temporal holdout would drop from training.
+def run_deep_model_refit(dataset_train_sub, dataset_val, dataset_train_full, geo_dim,
+                         epochs, steps_per_epoch_sub, steps_per_epoch_full, lograte=False):
+    build = create_log_model if lograte else create_model
+
+    # --- Phase 1: find best epoch via temporal-holdout validation ---
+    model = build(geo_dim)
+
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss",
+        patience=10,
+        verbose=1,
+        mode="auto",
+        restore_best_weights=True
+        )
+
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss",
+        factor=0.25,
+        patience=3,
+        verbose=1,
+        min_delta=1e-8
+        )
+
+    history = model.fit(dataset_train_sub, validation_data=dataset_val, validation_steps=25,
+                        steps_per_epoch=steps_per_epoch_sub, epochs=epochs, verbose=2,
+                        callbacks=[early_stopping, reduce_lr])
+
+    best_epoch = int(np.argmin(history.history['val_loss']) + 1)
+    best_val_loss = min(history.history['val_loss'])
+    tf.keras.backend.clear_session()
+
+    # --- Phase 2: refit on full <=JOY data for best_epoch epochs, no val peek ---
+    model = build(geo_dim)
+
+    # No validation set in phase 2, so schedule LR off the training loss instead.
+    reduce_lr_full = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor="loss",
+        factor=0.25,
+        patience=3,
+        verbose=1,
+        min_delta=1e-8
+        )
+
+    model.fit(dataset_train_full, steps_per_epoch=steps_per_epoch_full, epochs=best_epoch,
+              verbose=2, callbacks=[reduce_lr_full])
+
+    tf.keras.backend.clear_session()
+
+    return model, best_epoch, best_val_loss
 
