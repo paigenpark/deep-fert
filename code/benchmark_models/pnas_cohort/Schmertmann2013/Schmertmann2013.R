@@ -11,22 +11,27 @@
 ## and over the SAME jump-off years as the other cohort benchmarks in this repo
 ## (FreezeRates, Lee1993, Myrskyla2013, deBeer1985and1989).
 ##
-## RR-consistent design decision:
-##   The other benchmarks build their observed cohort "truth" from
-##   data/asfr_1950_to_2023.txt, which is derived from HFD's period Lexis-square
-##   file asfr/asfrRR.txt. To be scored against exactly the same truth, this
-##   script feeds the model RR-derived age x cohort rates (cohort = year - age,
-##   matching asfr_period_to_cohort() used elsewhere) and RR exposures from
-##   exposure/exposRR.txt -- NOT the native VV files the original script used.
-##   The model mathematics (penalties, posterior) are unchanged.
+## Input data (follows Schmertmann's description):
+##   The model is fed native HFD cohort data in the asfrVV format (asfr/asfrVV.txt)
+##   with matching exposures (exposure/exposVV.txt) -- fertility by single age,
+##   birth cohort, and country. Age = ARDY, cohort taken straight from the Cohort
+##   column (= Year - ARDY). No period (RR) -> cohort approximation is used.
+##   Output is keyed to the same 0-based numeric country index the other
+##   benchmarks emit (order of first appearance in asfr/asfrRR.txt) so scoring
+##   keys line up.
 ##
-## Adaptation note:
-##   The original calibrated the shape / time-series priors on complete cohorts
-##   born 1900-1949. This repo's HFD data starts in 1950, so those cohorts are
-##   incomplete here. We instead calibrate on complete cohorts born in
-##   CALIB_COHORTS (default 1935-1979) -- the earliest fully observed cohorts
-##   available. The paper (sec 4.4) reports the priors are highly robust to the
-##   historical subset used, so this is a minor, well-behaved substitution.
+## Genuinely-complete-cohort requirement:
+##   Schmertmann's prior deliberately leaves the oldest 10 cohorts of each
+##   40-cohort surface unconstrained, so the model assumes they are fully
+##   observed. We enforce that: a (country, jump-off year) is forecast only if
+##   those 10 cohorts are complete in the data (after the paper's narrow
+##   ages-15-19 backcast). Combinations without the required history are skipped,
+##   NOT backfilled. The model mathematics (penalties, posterior) are unchanged.
+##
+## Prior calibration:
+##   Shape and time-series priors are calibrated on genuinely complete cohorts
+##   born in CALIB_COHORTS (1900-1949, as in the original), which the VV data's
+##   pre-1950 depth supports for the long-series countries.
 ###############################################################################
 
 suppressWarnings(suppressMessages({
@@ -50,39 +55,46 @@ age  <- age1:age2
 A    <- length(age)          # 30 ages
 NC   <- 40                   # cohorts per forecast surface (JOY-54 .. JOY-15)
 joys <- c(1985, 1990, 1995, 2000, 2005, 2010)
-CALIB_COHORTS <- 1935:1979   # complete historical cohorts used to calibrate priors
+CALIB_COHORTS <- 1900:1949   # completed historical cohorts used to calibrate priors (as in the original)
 NITER <- 30                  # penalty-weight calibration iterations
 
 ## =============================================================================
-## 1. DATA (RR-consistent) -- rates & exposure as age x cohort, keyed by the
-##    numeric country index used across the benchmark suite (0-based, = geos_key)
+## 1. DATA (native VV) -- rates & exposure as age x cohort, keyed by the numeric
+##    country index used across the benchmark suite (0-based, = geos_key order)
 ## =============================================================================
 
-## --- rates from asfr_1950_to_2023.txt (numeric Country index already present)
-asfr <- read.table(file.path(path, "asfr_1950_to_2023.txt"), header = FALSE)
-colnames(asfr) <- c("Country", "Year", "Age", "Rate")
-asfr$Country <- as.integer(round(asfr$Country))
-asfr <- asfr[asfr$Age %in% age, ]
-asfr$Cohort <- asfr$Year - asfr$Age          # same convention as asfr_period_to_cohort()
-
-## --- exposure from exposRR.txt; map HFD Code -> numeric index via asfrRR order.
-##     split_period_data.py assigns each country the 0-based index of its first
-##     appearance in asfrRR.txt, so we reconstruct that exact map here.
+## --- Code -> numeric country index (order of first appearance in asfrRR.txt).
+##     split_period_data.py assigns this index and the other benchmarks emit it,
+##     so mapping VV's HFD Codes through it keeps Schmertmann's output keys aligned.
 rr_codes <- read.table(file.path(path, "asfr", "asfrRR.txt"),
                        skip = 3, header = FALSE,
                        colClasses = c("character", "NULL", "NULL", "NULL"))[[1]]
 code_levels <- unique(rr_codes)                       # order of first appearance
 code2idx    <- setNames(seq_along(code_levels) - 1L, code_levels)
 
-expo <- read.table(file.path(path, "exposure", "exposRR.txt"),
-                   skip = 3, header = FALSE, as.is = TRUE)
-colnames(expo) <- c("Code", "Year", "Age", "Exposure")
-expo$Age      <- suppressWarnings(as.integer(expo$Age))
+## --- rates: native HFD cohort format (asfrVV). Age = ARDY; cohort straight from
+##     the Cohort column (= Year - ARDY). Open age/cohort groups ("12-", "1939+")
+##     become NA under coercion and are dropped, leaving clean 15-44 cells.
+asfr <- read.table(file.path(path, "asfr", "asfrVV.txt"),
+                   skip = 2, header = TRUE, as.is = TRUE)
+asfr$Age    <- suppressWarnings(as.integer(asfr$ARDY))
+asfr$Cohort <- suppressWarnings(as.integer(asfr$Cohort))
+asfr$Rate   <- suppressWarnings(as.numeric(asfr$ASFR))
+asfr <- asfr[!is.na(asfr$Age) & asfr$Age %in% age &
+             !is.na(asfr$Cohort) & !is.na(asfr$Rate), ]
+asfr$Country <- code2idx[asfr$Code]
+asfr <- asfr[!is.na(asfr$Country), ]
+
+## --- exposure: native HFD cohort format (exposVV), matched the same way
+expo <- read.table(file.path(path, "exposure", "exposVV.txt"),
+                   skip = 2, header = TRUE, as.is = TRUE)
+expo$Age      <- suppressWarnings(as.integer(expo$ARDY))
+expo$Cohort   <- suppressWarnings(as.integer(expo$Cohort))
 expo$Exposure <- suppressWarnings(as.numeric(expo$Exposure))
-expo <- expo[!is.na(expo$Age) & expo$Age %in% age & !is.na(expo$Exposure), ]
+expo <- expo[!is.na(expo$Age) & expo$Age %in% age &
+             !is.na(expo$Cohort) & !is.na(expo$Exposure), ]
 expo$Country <- code2idx[expo$Code]
 expo <- expo[!is.na(expo$Country), ]
-expo$Cohort  <- expo$Year - expo$Age
 
 ## --- helper: build an age x cohort matrix from long (Age, Cohort, value) rows
 build_mat <- function(df, valcol) {
@@ -252,24 +264,29 @@ for (joy in joys) {
     ixe <- match(colnames(women), colnames(Expo))
     oke <- which(!is.na(ixe)); women[, oke] <- Expo[, ixe[oke]]
 
-    ## freeze-rate backcast (Myrskyla et al. 2013, as endorsed by Schmertmann):
-    ## Schmertmann's prior barely constrains the oldest 10 cohorts, so they must
-    ## be observed for the posterior to be identified. Countries whose HFD series
-    ## start late leave those cohorts' youngest-age cells (early calendar years)
-    ## empty. Complete them by carrying each age's earliest observed rate backward
-    ## across cohorts. Only this FITTING copy is backfilled; the emitted observed
-    ## truth (surf) stays clean, so backfilled values are never scored.
+    ## Narrow freeze-rate backcast, exactly as in Schmertmann's forecasts.R:
+    ## only ages 15-19 in the first 5 (oldest) cohorts may be gap-filled -- enough
+    ## to rescue a near-complete series without materially changing the forecast.
+    ## Only this FITTING copy is touched; the emitted truth (surf) stays clean.
     surf_fit  <- surf
     women_fit <- women
-    for (r in seq_len(A)) {
-      both <- which(!is.na(surf_fit[r, ]) & !is.na(women_fit[r, ]))
-      if (length(both) == 0) next
-      first <- min(both)                               # earliest observed cohort at this age
-      if (first > 1) {
-        surf_fit[r, 1:(first - 1)]  <- surf_fit[r, first]
-        women_fit[r, 1:(first - 1)] <- women_fit[r, first]
+    for (r in which(age %in% 15:19)) {
+      for (cc in 1:5) {
+        if (is.na(surf_fit[r, cc])) {
+          nxt <- which(!is.na(surf_fit[r, ])); nxt <- nxt[nxt > cc]
+          if (length(nxt)) {
+            surf_fit[r, cc]  <- surf_fit[r, min(nxt)]
+            women_fit[r, cc] <- women_fit[r, min(nxt)]
+          }
+        }
       }
     }
+
+    ## Genuinely-complete-cohort requirement: the oldest 10 cohorts (which the
+    ## prior does NOT constrain, and which are entirely in the past at the jump-off)
+    ## must be fully observed. If any cell is still missing we lack the data the
+    ## model assumes -- skip this (country, joy) rather than fabricate it.
+    if (any(is.na(surf_fit[, 1:10]))) next
 
     masked <- outer(age, coh, "+") > joy               # cells in the future at JOY
     vis    <- !is.na(surf_fit) & !is.na(women_fit) & !masked

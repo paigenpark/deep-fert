@@ -292,16 +292,20 @@ for (i in countries) {
   available_years <- as.numeric(colnames(ASFR_mat))
   min_data_year <- min(available_years)
 
+  # Lee variant uses the best-performing observation window from the paper: 40 years.
+  obs_window <- 40
+
   # 3. Iterate through Jump-Off Years
   for (joy in joys) {
 
-    # Check bounds
-    if (joy > max(available_years) || joy < min_data_year) {
+    # Check bounds: joy must exist and there must be a full 40-year window of history.
+    window_start <- joy - obs_window + 1
+    if (joy > max(available_years) || window_start < min_data_year) {
       next
     }
 
     # 4. GAP CHECK: YEARS
-    required_years_seq <- min_data_year:joy
+    required_years_seq <- window_start:joy
     missing_years <- setdiff(as.character(required_years_seq), colnames(ASFR_mat))
 
     if (length(missing_years) > 0) {
@@ -309,8 +313,8 @@ for (i in countries) {
       next
     }
 
-    # If we pass all checks, calculate obs and run
-    obs_years <- joy - min_data_year + 1
+    # If we pass all checks, use the fixed 40-year window and run
+    obs_years <- obs_window
 
     tryCatch({
       result <- Method14_Lee1993Log.R(
@@ -320,7 +324,7 @@ for (i in countries) {
         obs   = obs_years,
         age1  = 15,
         age2  = 44,
-        parameter = c("popconst", "actual", "arma"),
+        parameter = c("none", "actual", "arma"),
         len   = 30,
         pop   = i
       )
@@ -346,8 +350,8 @@ for (i in countries) {
 forecasts_df <- bind_rows(all_forecasts)
 obs_df <- bind_rows(all_obs)
 
-write.csv(forecasts_df, file = file.path(path, "lee_forecasts_cohort.csv"), row.names = FALSE)
-write.csv(obs_df, file = file.path(path, "lee_obs_cohort.csv"), row.names = FALSE)
+write.csv(forecasts_df, file = file.path(path, "lee2_forecasts_cohort.csv"), row.names = FALSE)
+write.csv(obs_df, file = file.path(path, "lee2_obs_cohort.csv"), row.names = FALSE)
 
-message(paste("Saved", nrow(forecasts_df), "forecast rows to", file.path(path, "lee_forecasts_cohort.csv")))
-message(paste("Saved", nrow(obs_df), "observed rows to", file.path(path, "lee_obs_cohort.csv")))
+message(paste("Saved", nrow(forecasts_df), "forecast rows to", file.path(path, "lee2_forecasts_cohort.csv")))
+message(paste("Saved", nrow(obs_df), "observed rows to", file.path(path, "lee2_obs_cohort.csv")))
