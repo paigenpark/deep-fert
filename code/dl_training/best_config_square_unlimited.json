@@ -1,0 +1,23 @@
+{
+  "variant": {
+    "name": "square_unlimited",
+    "lexis_shape": "square",
+    "lograte": false,
+    "age_min": 15,
+    "age_max": 44,
+    "train_window": null,
+    "tuning_joys": [
+      2005
+    ]
+  },
+  "score": 4.939782593282871e-05,
+  "trial": 1,
+  "hparams": {
+    "units": 128,
+    "n_layers": 2,
+    "dropout": 0.0,
+    "age_embed_dim": 5,
+    "geo_embed_dim": 8,
+    "learning_rate": 0.0013313603891894337
+  }
+}

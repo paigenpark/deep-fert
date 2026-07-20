@@ -3,6 +3,20 @@ import numpy as np
 import os as os
 tfkl = tf.keras.layers
 
+# --- Year feature normalization ---------------------------------------------
+# Affine (min-max) transform anchored to YEAR_MIN..YEAR_MAX. Centralized here so
+# training (get_data) and forecasting apply the exact same mapping and can't
+# drift. Plain arithmetic, so it works on Python scalars, numpy arrays, and TF
+# tensors alike. Years outside the anchor range map outside [0, 1] (expected --
+# e.g. forecast years extrapolate beyond it), which is fine for a linear input.
+YEAR_MIN = 1950
+YEAR_MAX = 2015
+
+
+def normalize_year(year):
+    return (year - YEAR_MIN) / (YEAR_MAX - YEAR_MIN)
+
+
 # get and prepare data
 def get_data(index, data, max_val, mode, changeratetolog=False):
     if mode == "train":
@@ -20,7 +34,7 @@ def get_data(index, data, max_val, mode, changeratetolog=False):
     geography, year, age, rate = entry[0], entry[1], entry[2], entry[3]
 
     # Normalization or preparation
-    year = (year - 1950) / (2015-1950)
+    year = normalize_year(year)
     age = tf.cast(age, tf.int32)
     geography = tf.cast(geography, tf.int32)
     if changeratetolog:
@@ -62,105 +76,70 @@ def prep_data(data, mode, changeratetolog=False):
     return final_data
 
 # create DL model
-def create_model(geo_dim):
-    # defining inputs 
+#
+# Hyperparameters (units, n_layers, dropout, embedding dims, learning_rate) are
+# exposed as arguments so a tuner can search over them. The DEFAULTS below
+# reproduce the original hardcoded architecture exactly, so existing callers that
+# pass only geo_dim get identical models to before.
+DEFAULT_HPARAMS = {
+    "units": 64,
+    "n_layers": 3,
+    "dropout": 0.1,
+    "age_embed_dim": 5,
+    "geo_embed_dim": 5,
+    "learning_rate": 1e-3,  # Adam's default, matching optimizer='adam'
+}
+
+
+def build_model(geo_dim, lograte=False, units=64, n_layers=3, dropout=0.1,
+                age_embed_dim=5, geo_embed_dim=5, learning_rate=1e-3):
+    """Build the ASFR model. `lograte=False` -> sigmoid output (raw rates);
+    `lograte=True` -> linear output (log rates)."""
+    # defining inputs
     year = tfkl.Input(shape=(1,), dtype='float32', name='Year')
-    age =  tfkl.Input(shape=(1,), dtype='int32', name='Age')
+    age = tfkl.Input(shape=(1,), dtype='int32', name='Age')
     geography = tfkl.Input(shape=(1,), dtype='int32', name='Geography')
 
-    # defining embedding layers 
-    age_embed = tfkl.Embedding(input_dim=55, output_dim=5, name='Age_embed')(age)
+    # defining embedding layers
+    age_embed = tfkl.Embedding(input_dim=55, output_dim=age_embed_dim, name='Age_embed')(age)
     age_embed = tfkl.Flatten()(age_embed)
 
-    geography_embed = tfkl.Embedding(input_dim=geo_dim, output_dim=5, name='Geography_embed')(geography)
+    geography_embed = tfkl.Embedding(input_dim=geo_dim, output_dim=geo_embed_dim, name='Geography_embed')(geography)
     geography_embed = tfkl.Flatten()(geography_embed)
 
-    # create feature vector that concatenates all inputs 
+    # create feature vector that concatenates all inputs
     x = tfkl.Concatenate()([year, age_embed, geography_embed])
     x1 = x
 
-    # setting up middle layers 
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
+    # setting up middle layers
+    for _ in range(n_layers):
+        x = tfkl.Dense(units, activation='relu')(x)
+        x = tfkl.LayerNormalization()(x)
+        x = tfkl.Dropout(dropout)(x)
 
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
-
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
-
-    # x = tfkl.Dense(128, activation='tanh')(x)
-    # x = tfkl.BatchNormalization()(x)
-    # x = tfkl.Dropout(0.1)(x)
-
-    # setting up output layer 
+    # setting up output layer (residual concat from inputs)
     x = tfkl.Concatenate()([x1, x])
-    x = tfkl.Dense(64, activation='relu')(x)
+    x = tfkl.Dense(units, activation='relu')(x)
     x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
+    x = tfkl.Dropout(dropout)(x)
 
-    x = tfkl.Dense(1, activation='sigmoid', name='final')(x)
+    output_activation = None if lograte else 'sigmoid'
+    x = tfkl.Dense(1, activation=output_activation, name='final')(x)
 
-    # creating the model 
+    # creating and compiling the model
     model = tf.keras.Model(inputs=[year, age, geography], outputs=[x])
-
-    # compiling the model
-    model.compile(loss='mse', optimizer='adam')
+    model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate))
 
     return model
 
-def create_log_model(geo_dim):
-    # defining inputs 
-    year = tfkl.Input(shape=(1,), dtype='float32', name='Year')
-    age =  tfkl.Input(shape=(1,), dtype='int32', name='Age')
-    geography = tfkl.Input(shape=(1,), dtype='int32', name='Geography')
 
-    # defining embedding layers 
-    age_embed = tfkl.Embedding(input_dim=55, output_dim=5, name='Age_embed')(age)
-    age_embed = tfkl.Flatten()(age_embed)
+# Backward-compatible wrappers so existing callers keep working unchanged.
+def create_model(geo_dim, **hparams):
+    return build_model(geo_dim, lograte=False, **hparams)
 
-    geography_embed = tfkl.Embedding(input_dim=geo_dim, output_dim=5, name='Geography_embed')(geography)
-    geography_embed = tfkl.Flatten()(geography_embed)
 
-    # create feature vector that concatenates all inputs 
-    x = tfkl.Concatenate()([year, age_embed, geography_embed])
-    x1 = x
-
-    # setting up middle layers 
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
-
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
-
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
-
-    # x = tfkl.Dense(128, activation='tanh')(x)
-    # x = tfkl.LayerNormalization()(x)
-    # x = tfkl.Dropout(0.1)(x)
-
-    # setting up output layer 
-    x = tfkl.Concatenate()([x1, x])
-    x = tfkl.Dense(64, activation='relu')(x)
-    x = tfkl.LayerNormalization()(x)
-    x = tfkl.Dropout(0.1)(x)
-    
-    x = tfkl.Dense(1, name='final')(x)
-
-    # creating the model 
-    model = tf.keras.Model(inputs=[year, age, geography], outputs=[x])
-
-    # compiling the model
-    model.compile(loss='mse', optimizer='adam')
-
-    return model
+def create_log_model(geo_dim, **hparams):
+    return build_model(geo_dim, lograte=True, **hparams)
 
 
 # run DL model
@@ -205,11 +184,13 @@ def run_deep_model(dataset_train, dataset_test, geo_dim, epochs, steps_per_epoch
 #          (never touches post-JOY graded data) while recovering the recent years
 #          that a plain temporal holdout would drop from training.
 def run_deep_model_refit(dataset_train_sub, dataset_val, dataset_train_full, geo_dim,
-                         epochs, steps_per_epoch_sub, steps_per_epoch_full, lograte=False):
-    build = create_log_model if lograte else create_model
+                         epochs, steps_per_epoch_sub, steps_per_epoch_full, lograte=False,
+                         hparams=None):
+    hparams = hparams or {}
+    build = lambda: build_model(geo_dim, lograte=lograte, **hparams)
 
     # --- Phase 1: find best epoch via temporal-holdout validation ---
-    model = build(geo_dim)
+    model = build()
 
     early_stopping = tf.keras.callbacks.EarlyStopping(
         monitor="val_loss",
@@ -236,7 +217,7 @@ def run_deep_model_refit(dataset_train_sub, dataset_val, dataset_train_full, geo
     tf.keras.backend.clear_session()
 
     # --- Phase 2: refit on full <=JOY data for best_epoch epochs, no val peek ---
-    model = build(geo_dim)
+    model = build()
 
     # No validation set in phase 2, so schedule LR off the training loss instead.
     reduce_lr_full = tf.keras.callbacks.ReduceLROnPlateau(
